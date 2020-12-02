@@ -1,19 +1,10 @@
-#
-# This is a Shiny web application. You can run the application by clicking
-# the 'Run App' button above.
-#
-# Find out more about building applications with Shiny here:
-#
-#    http://shiny.rstudio.com/
-#
+
 library(readr)
 library(shiny)
 library(tidyverse)
 library(dplyr, warn.conflicts = FALSE)
-library(ggplot2)
-library(ggforce)
 
-df <- NFL_Full_stat
+
 ui <- navbarPage(
   "Final Project Title",
   tabPanel("Summary Stats",
@@ -24,11 +15,8 @@ ui <- navbarPage(
                  selectInput(inputId = "dataset",
                              label = "Choose a dataset:",
                              choices = c("NFL", "Combine"
-                                         )),
-                 numericInput(inputId = "obs",
-                              label = "Number of observations to view:",
-                              value = 10)
-               ),
+                                         ))),
+                 
                mainPanel(verbatimTextOutput("summary")))
            )),
   tabPanel("About", 

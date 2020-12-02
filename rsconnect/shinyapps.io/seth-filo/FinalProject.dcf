@@ -1,0 +1,13 @@
+name: FinalProject
+title: FinalProject
+username:
+account: seth-filo
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 3035852
+bundleId: 3821529
+url: https://seth-filo.shinyapps.io/FinalProject/
+when: 1604533709.5705
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: App Interface.R|data gathering.R|ui.r
