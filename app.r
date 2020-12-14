@@ -1,8 +1,11 @@
+
+#Load libraries to be used
+
 library(readr)
 library(shiny)
 library(tidyverse)
-library(dplyr, warn.conflicts = FALSE)
 library(plyr)
+library(dplyr)
 library(readxl)
 library(ggplot2)
 library(robust)
@@ -15,893 +18,701 @@ library(XML)
 library(httr)
 library(taRifx)
 library(readr)
-library(tidymodels)
+library(gt)
+library(gtsummary)
+library(fec16)
+library(mdthemes)
+library(broom.mixed)
+library(DT)
+library(shinythemes)
 
-#Data
-NFL_2016_label <- read_excel("raw_data/NFL_2016_label.xlsx", 
-                             skip = 3)
-NFL_2016 <- NFL_2016_label%>%
-  mutate(year = 2016)
+#Load in full dattacreated in data gathering
 
-NFL_2017_label <- read_excel("raw_data/NFL_2017_label.xlsx", 
-                             skip = 3)
-NFL_2017 <- NFL_2017_label%>%
-  mutate(year = 2017)
+full_data <- read_csv("fulldata.csv", col_types = cols(`X1` = col_integer()))
 
-NFL_2018_label <- read_excel("raw_data/NFL_2018_label.xlsx", 
-                             skip = 3)
-NFL_2018 <- NFL_2018_label%>%
-  mutate(year = 2018)
+#Load in positional datasets created in data gathering
 
+QB <- read_csv("QB.csv", col_types = cols(`X1` = col_integer()))
+RB <- read_csv("RB.csv", col_types = cols(`X1` = col_integer()))
+LB <- read_csv("LB.csv", col_types = cols(`X1` = col_integer()))
+DT <- read_csv("DT.csv", col_types = cols(`X1` = col_integer()))
+DE <- read_csv("DE.csv", col_types = cols(`X1` = col_integer()))
+IOL <- read_csv("IOL.csv", col_types = cols(`X1` = col_integer()))
+Tackle <- read_csv("Tackle.csv", col_types = cols(`X1` = col_integer()))
+TE <- read_csv("TE.csv", col_types = cols(`X1` = col_integer()))
+WR <- read_csv("WR.csv", col_types = cols(`X1` = col_integer()))
+CB <- read_csv("CB.csv", col_types = cols(`X1` = col_integer()))
+S <- read_csv("S.csv", col_types = cols(`X1` = col_integer()))
 
-NFL_Full_stat <- join(NFL_2016,NFL_2017,by = "year", type = "full")
-NFL_Full_stat <- join(NFL_Full_stat,NFL_2018,by = "year", type = "full")
+#Aggregate mean career value per team
 
-Combine_2016 <- read_excel("raw_data/Combine_2016.xlsx")
-Combine_2016 <- Combine_2016%>%
-  mutate(year = 2016)
-
-Combine_2017 <- read_excel("raw_data/Combine_2017.xlsx")
-Combine_2017 <- Combine_2017 %>%
-  mutate(year = 2017)
-
-Combine_2018 <- read_excel("raw_data/Combine_2018.xlsx")
-Combine_2018 <- Combine_2018 %>%
-  mutate(year = 2018)
-
-Combine_Full_stat <- join(Combine_2016,Combine_2017,by = "year", type = "full")
-Combine_Full_stat <- join(Combine_Full_stat,Combine_2018,by = "year", type = "full")
-
-Combine_Full_stat <-  Combine_Full_stat %>%
-  rename("Player" = "Name")
-
-Combine_NFL_Full <- join(NFL_Full_stat, Combine_Full_stat, by = "Player", type = "full")
-
-mm <- rlm(formula = `Approx Val CarAV` ~ Rnd+Pos+G,
-          data = NFL_Full_stat
-)
-
-college_data <- read_excel("College_data.xlsx")
+ag <- aggregate(`Approx Val CarAV` ~ Tm, data = full_data, FUN = mean)
 
 
+#intialize as GT table
 
-college_data1 <- college_data %>%
-  select(Var.1:Var.6, player)
+team_graph1 <- gt(ag) %>%
+  
+  #Title table
+  
+  tab_header(title = "Average Pick Value by Team") %>%
+  
+  #Rename columns
+  
+  cols_label(Tm = "Team",
+             `Approx Val CarAV` = "Average Pick Value")
 
-college_data2 <- college_data %>%
-  select(Passing:Kick.Ret.3, -player)
+#Create outcome tables to be used for QB model table titles
 
-college_data2[] <- lapply(college_data2, function(x) as.numeric(as.character(x)))
+outcome_table <- c("Passing Yards Per Game" = "NFL.passing.pg",
+                   "Passing TDs Per Game" = "NFL.passtd.pg",
+                   "Yards Per Attempt" = "NFLYPA",
+                   "Value Per Year" = "ValuePerYear")
 
-college_data <- cbind(college_data1,college_data2)
+#Create outcome tables to be used for RB model table titles
 
-str(college_data3)
+outcome_table1 <- c("NFLYPC" = "NFLYPC",
+                    "Rushing Attempts" = "NFL.rushattmpt.pg",
+                    "Rushing Yards" = "NFL.rushyrds.pg",
+                    "Rushing TDs" = "NFL.rushtd.pg ",
+                    "Value Per Year" = "ValuePerYear",
+                    "Receptions" = "NFL.receptions.pg",
+                    "Receiving Yards" = "NFL.receivingyrds.pg",
+                    "Receiving TDs" = "`Receiving TD`",
+                    "Yards Per Reception" = "NFLYPR")
 
-college_data <- college_data %>%
-  rename("Year1" = "Var.1",
-         "College" = "Var.2",
-         "Conference" = "Var.3",
-         "Class.Year" = "Var.4",
-         "Position" = "Var.5",
-         "College.Games" = "Var.6",
-         "College.Completions" = "Passing",
-         "College.Passing.Attempts" = "Passing.1",
-         "College.Completion.Rate" = "Passing.2",
-         "College.Passing.Yards" = "Passing.3",
-         "College.Yards.Per.Attempt" = "Passing.4",
-         "College.Adjusted.YPA" = "Passing.5",
-         "College.Passing.Touchdowns" = "Passing.6",
-         "College.Passing.Interceptions" = "Passing.7",
-         "College.Passer.Rating" = "Passing.8",
-         "College.Solo.tackle" = "Tackles",
-         "College.Assist.Tackles" = "Tackles.1",
-         "College.Total.Tackles" = "Tackles.2",
-         "College.TFL" = "Tackles.3",
-         "College.Sacks" = "Tackles.4",
-         "College.Interceptions" = "Def.Int",
-         "College.Int.Yards" = "Def.Int.1",
-         "College.Int.Tds" = "Def.Int.3",
-         "College.Pass.Defensed" = "Def.Int.4",
-         "College.Fumble.Recoveries" = "Fumbles",
-         "College.Forced.Fumbles" = "Fumbles.3",
-         "College.Receptions" = "Receiving",
-         "College.Receiving.Yards" = "Receiving.1",
-         "College.YPR" = "Receiving.2",
-         "College.Receiving.TDs" = "Receiving.3",
-         "College.Rushing.Attempts" = "Rushing",
-         "College.Rushing.Yards" = "Rushing.1",
-         "College.YPC" = "Rushing.2",
-         "College.Rushing.TDs" = "Rushing.3",
-         "College.Total.Plays" = "Scrimmage",
-         "College.Scrimmage.Yards" = "Scrimmage.1",
-         "College.AVGYFS" = "Scrimmage.2",
-         "College.Total.Touchdowns" = "Scrimmage.3",
-         "Player" = "player"
-         
-  )
+#Create outcome tables to be used for WR model table titles
+
+outcome_table2 <- c("NFLYPC" = "NFLYPC",
+                    "Rushing Attempts" = "NFL.rushattmpt.pg",
+                    "Rushing Yards" = "NFL.rushyrds.pg ",
+                    "Rushing TDs" = "NFL.rushtd.pg ",
+                    "Value Per Year" = "ValuePerYear",
+                    "Receptions" = "NFL.receptions.pg",
+                    "Receiving Yards" = "NFL.receivingyrds.pg",
+                    "Receiving TDs" = "`Receiving TD`",
+                    "Yards Per Reception" = "NFLYPR")
 
 
 
-college_3 <- college_data %>%
-  filter(Year1 == "Career") %>%
-  mutate(college.passing.pg = College.Passing.Yards/College.Games,
-         college.att.pg = College.Passing.Attempts/College.Games,
-         college.comp.pg = College.Completions/College.Games,
-         college.passtd.pg = College.Passing.Touchdowns/College.Games,
-         college.passint.pg = College.Passing.Interceptions/College.Games,
-         college.solotackles.pg = College.Solo.tackle/College.Games,
-         college.asst.pg = College.Assist.Tackles/ College.Games,
-         college.totaltck.pg = College.Total.Tackles/College.Games,
-         college.TFL.pg = College.TFL/College.Games,
-         college.sack.pg = College.Sacks/College.Games,
-         college.int.pg = College.Interceptions/College.Games,
-         college.passdefensed.pg = College.Pass.Defensed/College.Games,
-         college.ff.pg = College.Forced.Fumbles/College.Games,
-         college.receptions.pg = College.Receptions/College.Games,
-         college.receivingyrds.pg = College.Receiving.Yards/College.Games,
-         college.receivingtd.pg = College.Receiving.TDs/College.Games,
-         college.rushattmpt.pg = College.Rushing.Attempts/College.Games,
-         college.rushyrds.pg = College.Rushing.Yards/College.Games,
-         college.rushtd.pg = College.Rushing.TDs/College.Games,
-         College.scrimyards.pg = College.Scrimmage.Yards/College.Games,
-         college.tottd.pg = College.Total.Touchdowns/College.Games)
-
-
-full_data <- full_join(Combine_NFL_Full, college_3, by = "Player")
-
-full_data1 <- full_data %>%
-  select(`40 Yard Dash`, 
-         `Bench Press`, 
-         `Vertical Jump`, 
-         `Broad Jump`,
-         `Three Cone Drill`,
-         `20 Yard Shuttle`,
-         `60 Yard Shuttle`)
-
-full_data2 <- full_data %>%
-  select(-`40 Yard Dash`, 
-         -`Bench Press`, 
-         -`Vertical Jump`, 
-         -`Broad Jump`,
-         -`Three Cone Drill`,
-         -`20 Yard Shuttle`,
-         -`60 Yard Shuttle`)
-
-full_data1[] <- lapply(full_data1, function(x) as.numeric(as.character(x)))
-
-full_data <- cbind(full_data1,full_data2)
-
-full_data <- full_data %>%
-  mutate(NFLYPC =`Rushing Yds`/`Rushing Att`,
-         NFLYPR = `Receiving Yds`/Receptions,
-         NFLYPA = `Passing Yds`/`Passing Att`,
-         NFLINTTD = `Passing TD`/`Passing Int`,
-         ValuePerYear = `Approx Val CarAV`/(2020 - year),
-         NFL.passing.pg = `Passing Yds`/G,
-         NFL.att.pg = `Passing Att`/G,
-         NFL.comp.pg = `Passing Cmp`/G,
-         NFL.passtd.pg = `Passing TD`/G,
-         NFL.passint.pg = `Passing Int`/G,
-         NFL.solotackles.pg = `Solo Tackle`/G,
-         NFL.sack.pg = Sk/G,
-         NFL.int.pg = Int/G,
-         NFL.receptions.pg = Receptions/G,
-         NFL.receivingyrds.pg = `Receiving Yds`/G,
-         NFL.receivingtd.pg = `Receiving TD`/G,
-         NFL.rushattmpt.pg = `Rushing Att`/G,
-         NFL.rushyrds.pg = `Rushing Yds`/G,
-         NFL.rushtd.pg = `Rushing TD`/G
-  )
 
 
 
-QB <- full_data %>%
-  filter(Pos == "QB") %>%
-  select(Rnd,
-         NFLINTTD,
-         NFLYPA,
-         Pick,
-         Tm,
-         Player,
-         Pos,
-         Age,
-         To,
-         `Approx Val CarAV`,
-         G,
-         NFL.att.pg,
-         NFL.comp.pg,
-         NFL.passint.pg,
-         NFL.passtd.pg,
-         NFL.passing.pg,
-         `Passing Cmp`,
-         `Passing Att`,
-         `Passing Yds`,
-         `Passing TD`,
-         `Passing Int`,
-         `Rushing Att`,
-         `Rushing Yds`,
-         `College/Univ`,
-         year,
-         Grade,
-         Height,
-         `Arm Length`,
-         Weight,
-         Hands,
-         `40 Yard Dash`,
-         `Bench Press`,
-         `Vertical Jump`,
-         `Broad Jump`,
-         `Three Cone Drill`,
-         `Hands Rank`,
-         `40 Rank`,
-         `Bench Rank`,
-         `Vertical Rank`,
-         `Broad Rank`,
-         `3 Cone Rank`,
-         `20 Shuttle Rank`,
-         `60 Shuttle Rank`,
-         College.Games,
-         College.Completions,
-         College.Passing.Attempts,
-         College.Completion.Rate,
-         College.Passing.Yards,
-         College.Yards.Per.Attempt,
-         College.Adjusted.YPA,
-         College.Passing.Touchdowns,
-         College.Passing.Interceptions,
-         College.Passer.Rating,
-         college.passing.pg,
-         college.att.pg,
-         college.comp.pg,
-         college.passtd.pg,
-         college.passint.pg,
-         ValuePerYear
-  )
-
-RB <- full_data %>%
-  filter(Pos == "RB") %>%
-  select(Rnd,
-         Pick,
-         Tm,
-         Player,
-         Pos,
-         Age,
-         To,
-         `Approx Val CarAV`,
-         G,
-         year,
-         Grade,
-         Height,
-         `Arm Length`,
-         Weight,
-         Hands,
-         `40 Yard Dash`,
-         `Bench Press`,
-         `Vertical Jump`,
-         `Broad Jump`,
-         `Three Cone Drill`,
-         `Hands Rank`,
-         `40 Rank`,
-         `Bench Rank`,
-         `Vertical Rank`,
-         `Broad Rank`,
-         `3 Cone Rank`,
-         `20 Shuttle Rank`,
-         `60 Shuttle Rank`,
-         NFL.receptions.pg,
-         NFL.receivingyrds.pg,
-         NFL.receivingtd.pg, 
-         NFL.rushattmpt.pg,
-         NFL.rushyrds.pg,
-         NFL.rushtd.pg ,
-         College.Games,
-         `Rushing Att`,
-         `Rushing Yds`,
-         Receptions,
-         `Receiving Yds`,
-         `Receiving TD`,
-         `College/Univ`,
-         year,
-         Grade,
-         NFLYPC,
-         College.Rushing.Attempts,
-         College.Rushing.Yards,
-         College.Rushing.TDs,
-         College.Receptions,
-         College.Receiving.Yards,
-         College.Receiving.TDs,
-         NFLYPR,
-         College.YPR,
-         College.YPC,
-         College.Total.Plays,
-         College.Total.Tackles,
-         College.Total.Touchdowns,
-         College.Scrimmage.Yards,
-         College.AVGYFS,
-         college.receptions.pg,
-         college.receivingyrds.pg,
-         college.receivingtd.pg,
-         college.rushattmpt.pg,
-         college.rushyrds.pg,
-         college.rushtd.pg,
-         College.scrimyards.pg,
-         college.tottd.pg,
-         ValuePerYear
-  )
-
-TE <- full_data %>%
-  filter(Pos == "TE") %>%
-  select(Rnd,
-         Pick,
-         Tm,
-         Player,
-         Pos,
-         Age,
-         To,
-         `Approx Val CarAV`,
-         G,
-         year,
-         Grade,
-         Height,
-         `Arm Length`,
-         Weight,
-         Hands,
-         `40 Yard Dash`,
-         `Bench Press`,
-         `Vertical Jump`,
-         `Broad Jump`,
-         `Three Cone Drill`,
-         `Hands Rank`,
-         `40 Rank`,
-         `Bench Rank`,
-         `Vertical Rank`,
-         `Broad Rank`,
-         `3 Cone Rank`,
-         `20 Shuttle Rank`,
-         `60 Shuttle Rank`,
-         College.Games,
-         `Rushing Att`,
-         `Rushing Yds`,
-         Receptions,
-         `Receiving Yds`,
-         `Receiving TD`,
-         `College/Univ`,
-         year,
-         Grade,
-         NFLYPC,
-         College.Rushing.Attempts,
-         College.Rushing.Yards,
-         College.Rushing.TDs,
-         College.Receptions,
-         College.Receiving.Yards,
-         College.Receiving.TDs,
-         NFL.receptions.pg,
-         NFL.receivingyrds.pg,
-         NFL.receivingtd.pg, 
-         NFL.rushattmpt.pg,
-         NFL.rushyrds.pg,
-         NFL.rushtd.pg ,
-         NFLYPR,
-         College.YPR,
-         College.YPC,
-         College.Total.Plays,
-         College.Total.Tackles,
-         College.Total.Touchdowns,
-         College.Scrimmage.Yards,
-         College.AVGYFS,
-         college.receptions.pg,
-         college.receivingyrds.pg,
-         college.receivingtd.pg,
-         college.rushattmpt.pg,
-         college.rushyrds.pg,
-         college.rushtd.pg,
-         College.scrimyards.pg,
-         college.tottd.pg,
-         ValuePerYear
-  )
-
-WR <- full_data %>%
-  filter(Pos == "WR") %>%
-  select(Rnd,
-         Pick,
-         Tm,
-         Player,
-         Pos,
-         Age,
-         To,
-         `Approx Val CarAV`,
-         G,
-         year,
-         Grade,
-         Height,
-         `Arm Length`,
-         Weight,
-         Hands,
-         `40 Yard Dash`,
-         `Bench Press`,
-         `Vertical Jump`,
-         `Broad Jump`,
-         `Three Cone Drill`,
-         `Hands Rank`,
-         `40 Rank`,
-         `Bench Rank`,
-         `Vertical Rank`,
-         `Broad Rank`,
-         `3 Cone Rank`,
-         `20 Shuttle Rank`,
-         `60 Shuttle Rank`,
-         College.Games,
-         `Rushing Att`,
-         `Rushing Yds`,
-         Receptions,
-         `Receiving Yds`,
-         `Receiving TD`,
-         `College/Univ`,
-         year,
-         Grade,
-         NFLYPC,
-         NFL.receptions.pg,
-         NFL.receivingyrds.pg,
-         NFL.receivingtd.pg, 
-         NFL.rushattmpt.pg,
-         NFL.rushyrds.pg,
-         NFL.rushtd.pg ,
-         College.Rushing.Attempts,
-         College.Rushing.Yards,
-         College.Rushing.TDs,
-         College.Receptions,
-         College.Receiving.Yards,
-         College.Receiving.TDs,
-         NFLYPR,
-         College.YPR,
-         College.YPC,
-         College.Total.Plays,
-         College.Total.Tackles,
-         College.Total.Touchdowns,
-         College.Scrimmage.Yards,
-         College.AVGYFS,
-         college.receptions.pg,
-         college.receivingyrds.pg,
-         college.receivingtd.pg,
-         college.rushattmpt.pg,
-         college.rushyrds.pg,
-         college.rushtd.pg,
-         College.scrimyards.pg,
-         college.tottd.pg,
-         ValuePerYear
-  )
-
-Tackle <- full_data %>%
-  filter(Pos == "T") %>%
-  select(Rnd,
-         Pick,
-         Tm,
-         Player,
-         Pos,
-         Age,
-         To,
-         `Approx Val CarAV`,
-         G,
-         year,
-         Grade,
-         Height,
-         `Arm Length`,
-         Weight,
-         Hands,
-         `40 Yard Dash`,
-         `Bench Press`,
-         `Vertical Jump`,
-         `Broad Jump`,
-         `Three Cone Drill`,
-         `Hands Rank`,
-         `40 Rank`,
-         `Bench Rank`,
-         `Vertical Rank`,
-         `Broad Rank`,
-         `3 Cone Rank`,
-         `20 Shuttle Rank`,
-         `60 Shuttle Rank`,
-         `College/Univ`,
-         year,
-         Grade,
-         ValuePerYear
-  )
-
-IOL <- full_data %>%
-  filter(Pos == c("G","C")) %>%
-  select(Rnd,
-         Pick,
-         Tm,
-         Player,
-         Pos,
-         Age,
-         To,
-         `Approx Val CarAV`,
-         G,
-         year,
-         Grade,
-         Height,
-         `Arm Length`,
-         Weight,
-         Hands,
-         `40 Yard Dash`,
-         `Bench Press`,
-         `Vertical Jump`,
-         `Broad Jump`,
-         `Three Cone Drill`,
-         `Hands Rank`,
-         `40 Rank`,
-         `Bench Rank`,
-         `Vertical Rank`,
-         `Broad Rank`,
-         `3 Cone Rank`,
-         `20 Shuttle Rank`,
-         `60 Shuttle Rank`,
-         `College/Univ`,
-         year,
-         Grade,
-         ValuePerYear
-  )
-
-DT <- full_data %>%
-  filter(Pos == "DT") %>%
-  select(Rnd,
-         Pick,
-         Tm,
-         Player,
-         Pos,
-         Age,
-         To,
-         `Approx Val CarAV`,
-         G,
-         year,
-         Grade,
-         Height,
-         `Arm Length`,
-         Weight,
-         Hands,
-         `40 Yard Dash`,
-         `Bench Press`,
-         `Vertical Jump`,
-         `Broad Jump`,
-         `Three Cone Drill`,
-         `Hands Rank`,
-         `40 Rank`,
-         `Bench Rank`,
-         `Vertical Rank`,
-         `Broad Rank`,
-         `3 Cone Rank`,
-         `20 Shuttle Rank`,
-         `60 Shuttle Rank`,
-         College.Games,
-         `College/Univ`,
-         year,
-         Grade,
-         `Solo Tackle`,
-         Int,
-         Sk,
-         NFL.solotackles.pg,
-         NFL.sack.pg,
-         NFL.int.pg,
-         College.Solo.tackle,
-         College.Assist.Tackles,
-         College.TFL,
-         College.Sacks,
-         College.Interceptions,
-         College.Int.Yards,
-         College.Int.Tds,
-         College.Pass.Defensed,
-         College.Fumble.Recoveries,
-         College.Forced.Fumbles,
-         college.solotackles.pg,
-         college.asst.pg,
-         college.totaltck.pg,
-         college.TFL.pg,
-         college.sack.pg,
-         college.passdefensed.pg,
-         college.ff.pg,
-         college.int.pg,
-         ValuePerYear)
-
-DE <- full_data %>%
-  filter(Pos == "DE") %>%
-  select(Rnd,
-         Pick,
-         Tm,
-         Player,
-         Pos,
-         Age,
-         To,
-         `Approx Val CarAV`,
-         G,
-         year,
-         Grade,
-         Height,
-         `Arm Length`,
-         Weight,
-         Hands,
-         `40 Yard Dash`,
-         `Bench Press`,
-         `Vertical Jump`,
-         `Broad Jump`,
-         `Three Cone Drill`,
-         `Hands Rank`,
-         `40 Rank`,
-         `Bench Rank`,
-         `Vertical Rank`,
-         `Broad Rank`,
-         `3 Cone Rank`,
-         `20 Shuttle Rank`,
-         `60 Shuttle Rank`,
-         College.Games,
-         `College/Univ`,
-         year,
-         Grade,
-         `Solo Tackle`,
-         Int,
-         Sk,
-         NFL.solotackles.pg,
-         NFL.sack.pg,
-         NFL.int.pg,
-         College.Solo.tackle,
-         College.Assist.Tackles,
-         College.TFL,
-         College.Sacks,
-         College.Interceptions,
-         College.Int.Yards,
-         College.Int.Tds,
-         College.Pass.Defensed,
-         College.Fumble.Recoveries,
-         College.Forced.Fumbles,
-         college.solotackles.pg,
-         college.asst.pg,
-         college.totaltck.pg,
-         college.TFL.pg,
-         college.sack.pg,
-         college.passdefensed.pg,
-         college.ff.pg,
-         college.int.pg,
-         ValuePerYear)
-
-
-LB <- full_data %>%
-  filter(Pos == c("OLB","ILB")) %>%
-  select(Rnd,
-         Pick,
-         Tm,
-         Player,
-         Pos,
-         Age,
-         To,
-         `Approx Val CarAV`,
-         G,
-         year,
-         Grade,
-         Height,
-         `Arm Length`,
-         Weight,
-         Hands,
-         `40 Yard Dash`,
-         `Bench Press`,
-         `Vertical Jump`,
-         `Broad Jump`,
-         `Three Cone Drill`,
-         `Hands Rank`,
-         `40 Rank`,
-         `Bench Rank`,
-         `Vertical Rank`,
-         `Broad Rank`,
-         `3 Cone Rank`,
-         `20 Shuttle Rank`,
-         `60 Shuttle Rank`,
-         College.Games,
-         `College/Univ`,
-         year,
-         Grade,
-         `Solo Tackle`,
-         Int,
-         Sk,
-         NFL.solotackles.pg,
-         NFL.sack.pg,
-         NFL.int.pg,
-         College.Solo.tackle,
-         College.Assist.Tackles,
-         College.TFL,
-         College.Sacks,
-         College.Interceptions,
-         College.Int.Yards,
-         College.Int.Tds,
-         College.Pass.Defensed,
-         College.Fumble.Recoveries,
-         College.Forced.Fumbles,
-         college.solotackles.pg,
-         college.asst.pg,
-         college.totaltck.pg,
-         college.TFL.pg,
-         college.sack.pg,
-         college.passdefensed.pg,
-         college.ff.pg,
-         college.int.pg,
-         ValuePerYear)
-
-CB <- full_data %>%
-  filter(Pos == "CB") %>%
-  select(Rnd,
-         Pick,
-         Tm,
-         Player,
-         Pos,
-         Age,
-         To,
-         `Approx Val CarAV`,
-         G,
-         year,
-         Grade,
-         Height,
-         `Arm Length`,
-         Weight,
-         Hands,
-         `40 Yard Dash`,
-         `Bench Press`,
-         `Vertical Jump`,
-         `Broad Jump`,
-         `Three Cone Drill`,
-         `Hands Rank`,
-         `40 Rank`,
-         `Bench Rank`,
-         `Vertical Rank`,
-         `Broad Rank`,
-         `3 Cone Rank`,
-         `20 Shuttle Rank`,
-         `60 Shuttle Rank`,
-         College.Games,
-         `College/Univ`,
-         year,
-         Grade,
-         `Solo Tackle`,
-         NFL.solotackles.pg,
-         NFL.sack.pg,
-         NFL.int.pg,
-         Int,
-         Sk,
-         College.Solo.tackle,
-         College.Assist.Tackles,
-         College.TFL,
-         College.Sacks,
-         College.Interceptions,
-         College.Int.Yards,
-         College.Int.Tds,
-         College.Pass.Defensed,
-         College.Fumble.Recoveries,
-         College.Forced.Fumbles,
-         college.solotackles.pg,
-         college.asst.pg,
-         college.totaltck.pg,
-         college.TFL.pg,
-         college.sack.pg,
-         college.passdefensed.pg,
-         college.ff.pg,
-         college.int.pg,
-         ValuePerYear)
-
-S <- full_data %>%
-  filter(Pos == "S") %>%
-  select(Rnd,
-         Pick,
-         Tm,
-         Player,
-         Pos,
-         Age,
-         To,
-         `Approx Val CarAV`,
-         G,
-         year,
-         Grade,
-         Height,
-         `Arm Length`,
-         Weight,
-         Hands,
-         `40 Yard Dash`,
-         `Bench Press`,
-         `Vertical Jump`,
-         `Broad Jump`,
-         `Three Cone Drill`,
-         `Hands Rank`,
-         `40 Rank`,
-         `Bench Rank`,
-         `Vertical Rank`,
-         `Broad Rank`,
-         `3 Cone Rank`,
-         `20 Shuttle Rank`,
-         `60 Shuttle Rank`,
-         College.Games,
-         `College/Univ`,
-         year,
-         Grade,
-         `Solo Tackle`,
-         Int,
-         Sk,
-         NFL.solotackles.pg,
-         NFL.sack.pg,
-         NFL.int.pg,
-         College.Solo.tackle,
-         College.Assist.Tackles,
-         College.TFL,
-         College.Sacks,
-         College.Interceptions,
-         College.Int.Yards,
-         College.Int.Tds,
-         College.Pass.Defensed,
-         College.Fumble.Recoveries,
-         College.Forced.Fumbles,
-         college.solotackles.pg,
-         college.asst.pg,
-         college.totaltck.pg,
-         college.TFL.pg,
-         college.sack.pg,
-         college.passdefensed.pg,
-         college.ff.pg,
-         college.int.pg,
-         ValuePerYear)
-
+#Initialize UI
 
 ui <- navbarPage(
-  "Final Project Title",
+  
+  #Create About page
+  
+  "Predicting NFL Success from Physical and Production Traits",
+                     tabPanel("Plots",
+                              fluidPage(theme = shinytheme("cerulean"),
+                              h3("Plot of Round and Career Value"),
+                              titlePanel("Plots"),
+                              
+                              #Explain plot
+                              
+                              p("The following plotshows the relationship between all players and their career values
+             by the round they were selected in in their respective NFL drafts. As we see, the first round
+             generally produces the highest average career values, which each round subsequently falling in average value "),
+                              
+                              #Output plot onto page
+                              
+                              fluidPage(plotOutput("plot")),
+                              br(),
+                              br(),
+                              br(),
+                              br(),
+                              sidebarPanel(
+                                
+                                #Out put team model with  average value per pick
+                                
+                                gt_output("teammodel")),
+                              h3("Team Performance: Value per Pick 2016-2018"),
+                              p("The table to the left is the average career value per pick for
+             each of the 32 NFL teams in the league (The Chargers appear twice due
+             to their move to Los Angeles) the data shows that the New Orleans Saints
+             had the strongest average drafts, while teams such as the Washington Football
+             Team had the worst draft. The NFL draft is a source of life for teams, and
+             generally teams that perform well in the draft translate it to the field. 
+             The Saints, Colts, and Titans used these drafts to build deep and talented
+             rosters, while the drafts of teams such as Washington, Cincinatti, and Minnesota
+             have led to deflated seasons. ")
+                     )),
+                     
+                     #Create models tab
+                     
+                     tabPanel("Models",
+                              tabPanel(
+                                
+                                #Explain regression model
+                                
+                                h3("Regression of Combine Stats"),
+                                p("This regression determines the coefficients of combine performance
+           for different positions on average career value. This includes determinants
+           such as the 40 yard dash; which measures a players speed running 40 yards,
+           the bench press measures the number of reps of 225 pounds a prospect
+           can perform without fail, the three cone drill tests player agility 
+           and ability to manuever their body around three cones in a preset order,
+           the broad jump measurs a prospects explosiveness and horizontal jumping
+           ability while the vertical jump determines the height a prospect can jump 
+           from a preset position.
+           
+           
+             "),
+                                
+                                #Create choices for regression of combine stats
+                                
+                                selectInput(inputId = "Position_Selection",
+                                            label = "Choose a position",
+                                            choices = c("RB" = "RB", 
+                                                        "WR" = "WR", 
+                                                        "TE" = "TE", 
+                                                        "OT" = "Tackle", 
+                                                        "IOL" = "IOL", 
+                                                        "DT" = "DT",
+                                                        "DE" = "DE", 
+                                                        "LB" = "LB",
+                                                        "CB" = "CB", 
+                                                        "S" = "S"),
+                                            selected = "QB"),
+                                
+                                #Output as results table
+                                
+                                gt_output("model2"),
+                                h3("Analysis"),
+                                p("Some interesting takeaways and significant variables include,
+              -The 40 yard dash is 90% significant for a WR's value
+              -Bench Press is 90% significant for a DT's value
+              -The three-cone drill is 95% significant for a Safeties value,
+              -Round is 95% significant for all players"),
+                                br(),
+                                br(),
+                                
+                                #Create regression of physical traits
+                                
+                                h3("Regression of Physical Traits"),
+                                p("This regression determines the impact of physical traits such as height and 
+    weight by position on average career value, the variables include height,
+               weight, arm length and hand size"),
+                                
+                                #Create inout for userrs to select desired position
+                                
+                                selectInput(inputId = "Position_Selection2",
+                                            label = "Choose a position",
+                                            choices = c("RB" = "RB", 
+                                                        "WR" = "WR", 
+                                                        "TE" = "TE", 
+                                                        "OT" = "Tackle", 
+                                                        "IOL" = "IOL", 
+                                                        "DT" = "DT",
+                                                        "DE" = "DE", 
+                                                        "LB" = "LB",
+                                                        "CB" = "CB", 
+                                                        "S" = "S"),
+                                            selected = "QB"),
+                                
+                                
+                                #Output as data table
+                                
+                                gt_output("model3")),
+                              h3("Analysis"),
+                              p("Some interesting takeaways and significant variables include,
+              -Hand size is 95% significant for a WR's value
+              -Arm Length is 90% significant and negative for a DT's value
+              -Weight is 95% significant and negative for a LBs value,
+              -Weight is 95% significant and negative for a Safeties value")
+                     ),
+                     
+                     
+  #Create dataset summaries
+  
   tabPanel("Summary Stats",
            fluidPage(
-             titlePanel("Dataset Summaries"),
+             tabPanel("Dataset Summaries"),
              sidebarLayout(
                sidebarPanel(
+                 
+                 #Allow users to pick datasets by position
+                 
                  selectInput(inputId = "dataset",
-                             label = "Choose a dataset:",
-                             choices = c("NFL", "Combine"
+                             label = "Choose a Position:",
+                             choices = c( "QB" = "QB",
+                                          "RB" = "RB", 
+                                          "WR" = "WR", 
+                                          "TE" = "TE", 
+                                          "OT" = "Tackle", 
+                                          "IOL" = "IOL", 
+                                          "DT" = "DT",
+                                          "DE" = "DE", 
+                                          "LB" = "LB",
+                                          "CB" = "CB", 
+                                          "S" = "S"
                              ))),
                
-               mainPanel(verbatimTextOutput("summary")))
+               mainPanel(verbatimTextOutput("summary"))),
+             h3("Data Explanation"),
+             p("Each of the positional datasets has been created by restricting 
+               the full dataset to applicable variables. The following are some
+               descriptions of key variables and common acronyms.
+               
+               Avg Val Car Avg is a formula that considers the production value
+               of players based on their contributions at their respective 
+               position, it is the best value to use too standardize player 
+               value across positions
+               
+               YPA is yards per attempt, and AYPA is adjusted yards per attempt
+               which considers drops and other stats. Yards per attempt is a passing
+               stat that quantifies the average yardage gain achieved per pass 
+               attempt
+               
+               YPC is yards per carry, it is a rushing stat that determines a 
+               running back's efficiency
+               
+               YPR is yards per reception, it is a receiving stat that determines
+               how many yards a player gets on average whenn catching the ball
+               
+               Quarterback rating is a formula that considers interceptions, sacks,
+               yards per attempt, completion percentage and more
+               
+               Completion percentage is the percentage of QB attempts that are completed")
            )),
-  tabPanel("Plot of Round and Career Value",
-           fluidPage(plotOutput("plot"))
-  ),
   
-  tabPanel("Regression Analysis",
-           fluidPage(verbatimTextOutput("regress")),
-           h3("Explanation of Regression"),
-           p("This regression accounts for games played,position, and round drafted and the effect on Average Career Value, as we can see, as games played increases, career value does, and earlier rounds bring higher averages. Defensive ends, corners, fullbacks and many other positions are less likely to have higher average career values while quarterbacks and guards receive favorable coefficients.")
-  ),
-  tabPanel("About", 
-           titlePanel("About"),
-           h3("Project Background and Motivations"),
-           p("My project is focused on utilizing data from the NCAA, NFL Combine, and NFL Statistics to find a link between college performance/athletic testing and NFL performance across different positions."),
-           h3("Data Sourcing"),
-           p("My data repository can be found here",a("data repo", href = "https://github.com/sethf26/shiny.git"), "and my sources currently include Profootball reference for NFL data, the NFL combine official repository for combine data, and the NCAA for college data, but I have yet to collect full college data due to inconsistencies in the year players enter the draft. I currently have 2 data sets including full NFL and combine stats for draft classes from 2016-2018, and am having trouble joining them by player name due to a pesky backslash present in my data")))
+  #Createe plot with career values and round
+  
+  
+  
+  #Create tab for QB production
+  
+  tabPanel("QB Production Model",
+             h3("Regression of Quarterbacks prior Stats on NFL Value and Statistics"),
+             p("This is a regression of quarterback NFL per game stats based on college
+               per game stats, and includes predictors such as college passing yards
+               per game, completion percentage, passer rating, number of games played,
+               round drafted and adjusted yards per attempt."),
+           
+             #Create selection input for user to pick variable to regress on
+             
+             selectInput(inputId = "selection_qb",
+                         label = "Choose a variable",
+                         choices = c("Passing Yards Per Game" = "NFL.passing.pg",
+                                     "Passing TDs Per Game" = "NFL.passtd.pg",
+                                     "Yards Per Attempt" = "NFLYPA",
+                                     "Value Per Year" = "ValuePerYear"),
+                         selected = "NFL.passing.pg"),
+           
+           #Create selection input for user to pick regressors
+           
+    selectInput(inputId = "selected_predictor",
+               label =  "Choose a regressor",
+               choices = c("Round Drafted" = "Rnd",
+                           "Passer Rating" = "College.Passer.Rating",
+                           "College Completions Per Game" = "college.comp.pg",
+                           "College Games" = "College.Games",
+                          "College Completion Rate" = "College.Completion.Rate",
+                          "College Adjusted Yards Per Attempt" = "College.Adjusted.YPA"),
+              multiple = TRUE,
+              
+              #Input round and college games as the default
+              
+              selected = c("Rnd",
+                           "College.Games")),
+    
+    #Output as table model
+           
+           gt_output("model4"),
+           h3("Analysis"),
+           p("This model uses college statistics such as the round drafter,
+             their passer rating (a formula using other stats to standardize
+             efficiency), the number of games played in college, and their
+             college completion rate, as well as the adjusted yards per attempt
+             (number of yards on average per passing attempt. You can choose
+             which regressor to use to find its effect on NFL stats such as
+             passing yards per game, passing touchdowns per game, yards per 
+             attempt and more.")),
+  
+  
+  #Create RB production model tab
+  
+  tabPanel("RB Production Model",
+             h3("Regression of Running Backs prior Stats on NFL Value and Statistics"),
+             p("This is a regression of runningback NFL per game stats based on college
+               per game stats, and includes predictors such as college rushing yards
+               per game, tds per game, college yards per carry, attempts per game and
+               receptions, receiving yards, and receiving TDs per game."),
+             
+             #Create selection input for user to pick variable to regress on
+             
+             selectInput(inputId = "selection_rb",
+                         label = "Choose a variable",
+                         choices = c("NFLYPC" = "NFLYPC",
+                                     "Rushing Attempts" = "NFL.rushattmpt.pg",
+                                     "Rushing Yards" = "NFL.rushyrds.pg ",
+                                     "Rushing TDs" = "NFL.rushtd.pg ",
+                                     "Value Per Year" = "ValuePerYear",
+                                     "Receptions" = "NFL.receptions.pg",
+                                     "Receiving Yards" = "NFL.receivingyrds.pg",
+                                     "Receiving TDs" = "`Receiving TD`",
+                                     "Yards Per Reception" = "NFLYPR"),
+                         selected = "NFL.rushyrds.pg"),
+           
+           #Create selection input for user to pick regressors
+           
+             selectInput(inputId = "selected_predictor1",
+                         label =  "Choose a regressor",
+                         choices = c("College Yards Per Carry" = "College.YPC",
+                          "College Attempts Per Game" = "college.rushattmpt.pg",
+                          "College Rush TD Per Game" = "college.rushtd.pg",
+                          "College Rush Yards Per Game" = "college.rushyrds.pg",
+                         "Round" = "Rnd",
+                         "College Receptions Per Game" = "college.receptions.pg", 
+                          "College Receiving TD Per Game" = "college.receivingtd.pg", 
+                         "College Receiving Yards Per Game" = "college.receivingyrds.pg"),
+                         multiple = TRUE,
+                         
+                         #Input round and college yards per carry as the default
+                         
+                         selected = c("Rnd",
+                                      "College.YPC")),
+           
+           #Output as regression table 
+           
+           gt_output("model5"),
+           h3("Analysis"),
+           p("This model uses college statistics such as the round drafted,
+           the average yards per carry,  attempts, yards and rushing TDs per
+           game, as well as receiving stats such as receptions, receiving yards,
+           and receiving touchdowns per game. The user can select which
+           regressor to use to find its effect on NFL stats such as
+               rushing yards per game, rushing touchdowns per game, yards per 
+               carry and more. Some takeaways are that college receptions per game
+             is positively and significantly associated with receiving yards
+             per game.College receiving yards are negatively and significantly
+             associated with NFL rushing attempts and rushing yards.  ")
+           
+),
+
+#Initialize WR production page
+
+tabPanel("WR Production Model",
+         h3("Regression of Wide Receivers prior Stats on NFL Value and Statistics"),
+         p("This is a regression of Wide Receiver NFL per game stats based on college
+               per game stats, and includes predictors such as college receiving 
+               yards per game, tds per game, college yards per receptions, 
+               receptions per game on NFL receptions, receiving yards, and 
+           receiving TDs per game."),
+         
+         #Create selection input for user to pick variable to regress on
+         
+         selectInput(inputId = "selection_wr",
+                     label = "Choose a variable",
+                     choices = c("NFLYPC" = "NFLYPC",
+                                 "Rushing Attempts" = "NFL.rushattmpt.pg",
+                                 "Rushing Yards" = "NFL.rushyrds.pg ",
+                                 "Rushing TDs" = "NFL.rushtd.pg ",
+                                 "Value Per Year" = "ValuePerYear",
+                                 "Receptions" = "NFL.receptions.pg",
+                                 "Receiving Yards" = "NFL.receivingyrds.pg",
+                                 "Receiving TDs" = "`Receiving TD`",
+                                 "Yards Per Reception" = "NFLYPR"),
+                     
+                     #Input round and college yards per reception as the default
+                     
+                     selected = "NFL.YPR"),
+         
+         #Create selection input for user to pick regressors
+         
+         selectInput(inputId = "selected_predictor2",
+                     label =  "Choose a regressor",
+                     choices = c("College Yards Per Reception" = "College.YPR",
+                                 "College Attempts Per Game" = "college.rushattmpt.pg",
+                                 "College Rush TD Per Game" = "college.rushtd.pg",
+                                 "College Rush Yards Per Game" = "college.rushyrds.pg",
+                                 "Round" = "Rnd",
+                                 "College Receptions Per Game" = "college.receptions.pg", 
+                                 "College Receiving TD Per Game" = "college.receivingtd.pg", 
+                                 "College Receiving Yards Per Game" = "college.receivingyrds.pg"),
+                     multiple = TRUE,
+                     
+                     #Input round and college yards per carry as the default
+                     
+                     selected = c("Rnd",
+                                  "college.receptions.pg")),
+         
+         #Output as regression table
+         
+         gt_output("model6"),
+         h3("Analysis"),
+         p("This model uses college statistics such as the round drafted,
+           the average yards per reception,  receptions, yards and receiving TDs per
+           game, as well as receiving stats such as receptions, receiving yards,
+           and receiving touchdowns per game. The user can select which
+           regressor to use to find its effect on NFL stats such as
+           receiving yards per game, receiving touchdowns per game, yards per 
+           reception and more. Some takeaways are that college receiving yards
+           per game is statistically significant and positive for college yards
+           per reception after controlling for receptions and receiving TDs, and 
+           college rushing touchdowns are statistically significant for NFL
+           rushing TDs")
+         
+),
+#Initialize background page
+
+tabPanel("About",
+h3("Project Background and Motivations"),
+
+#Write background motivation
+
+p("This project was started with the hope of finding overrated or 
+           underrated variables NFL scouts use to determine a college players 
+           likelihood of being successful in the NFL. The findings have included 
+           some unnique conclusions, such as a Wide Receiver's 
+             40 yard dash time not being linked to his NFL Yards per catch, and 
+             many other unintuitive takeaways. The goal is to find he important 
+             physical and productive traits that give decision makers a better 
+             lens of a successful Professional Football Player"),
+
+#Add data sourcing info
+
+h3("Data Sourcing"),
+
+#Write data sourcing 
+
+p("My data repository can be found here",a("data repo", href = 
+                                             "https://github.com/sethf26/shiny.git"), 
+  "my full data includes 1370 observations of 165 variables, 
+            which have been pieced together and created by myself.  The first collection of data is NFL 
+            statistics, which came from pro-football reference. Next is combine 
+            and draft statistics which were pulled directly from the NFL's website. 
+            For college statistics, I scraped for each of the years I intended to garner data on, 
+            then cleaned this data and combined it into one dataset. To standardize 
+            for players with different numbers of years in the league, I created 
+            over 50 variables quantifying NFL and College statistics on a per game basis"),
+
+#Add further action info
+
+h3("Further Action to be Taken"),
+p("In continuation of this project, I plan to continue adding years 
+            to this dataset to increase its robustness, and apply non-linear models that will 
+              allow me to get a better gauge on characteristics that contribute to a successful NFL career"),
+
+#Talk about myself for abit in the about  me section
+
+h3("About Me"),
+p("Seth Filo is a Junior at Harvard Collge studying 
+                     Government and Economics with an interest in data science
+                     and using it to properly gauge societal issues find logical solutions, 
+                     and better predict outcomes. He is originally
+                     from Ohio, but has lived in Arizona the past 10 years with a brief detour
+             in Alabama for a year, allowing for a unique understanding of 
+              everyday America and the issues it faces")
+           ))
 
 
-server <- function(input, output) {
-  # Return the requested dataset ----
-  datasetInput <- reactive({
-    switch(input$dataset,
-           "NFL" = NFL_Full_stat,
-           "Combine" = Combine_Full_stat)
-  })
+
+
+
+server <- function(input, output, session) {
+  
+  
+  #Generate numerical summary of datasets
   
   # Generate a summary of the dataset ----
   output$summary <- renderPrint({
-    dataset <- datasetInput()
+    dataset <- get(input$dataset)
     summary(dataset)
   })
   
-  output$regress <- renderPrint({
-    summary(mm)
-  })
+  #Generate ggplot of value by round
   
   output$plot <- renderPlot({
-    ggplot(NFL_Full_stat, mapping = aes(x = Rnd, y = `Approx Val CarAV`, color = Pos))+geom_point()+labs(title = "Average Career Value by Round", x = "Round Drafter", y = "Average Career Value")
+    ggplot(full_data, mapping = aes(x = Rnd, 
+                                    y = `Approx Val CarAV`, 
+                                    color = Pos)) +
+      geom_point() +
+      labs(title = "Average Career Value by Round",
+           x = "Round Drafter",
+           y = "Average Career Value") +
+      theme_classic()
   })
   
-  # Show the first "n" observations ----
+  #Generate scores for each team
+  
+  output
+  
+  # Show the first "n" observations 
+  
   output$view <- renderTable({
     head(datasetInput(), n = input$obs)
   })
   
+  #Create regression formula for combine
+  
+  formula <- reactive({
+    as.formula(`Approx Val CarAV` ~ `40 Yard Dash` + `Bench Press` + Rnd + `Broad Jump` + `Three Cone Drill`+`Vertical Jump`)
+  }) 
+  
+  #Input formula with data as selected by user
+  
+  model_2 <- reactive({
+    stan_glm(data = get(input$Position_Selection ),
+             formula = formula(),
+             refresh = 0,
+             family = "gaussian")})
+  
+  #Create output with table with titles
+  
+  output$model2 <- render_gt(
+    model_2() %>%
+      tbl_regression() %>%
+      as_gt() %>%
+      tab_header(title = paste("Regression of Combine Stats by Position"),
+                 subtitle = "The Effect of Various Combine Statistics on Career Value"))
+  
+  #Physical Traits Model
+  
+  #Initialize physical traits formula
+  
+  formula1 <- reactive({
+    as.formula(`Approx Val CarAV` ~ Rnd + Height + Weight + `Arm Length` + Hands)
+  }) 
+  
+  #Input formula with data as selected by user
+  
+  model_3 <- reactive({
+    stan_glm(data = get(input$Position_Selection2),
+             formula = formula1(),
+             refresh = 0,
+             family = "gaussian")})
+  
+  #Output as table with titles
+  
+  
+  output$model3 <- render_gt(
+    model_3() %>%
+      tbl_regression() %>%
+      as_gt() %>%
+      tab_header(title = paste("Regression of Physical Traits by Position"),
+                 subtitle = "The Effect of Various Physical Traits on Career Value"))
+  
+  #Input formula with data as selected by user, using paste with the selected
+  #input to paste in regressors separated by plus ssigns
+  
+  formula3 <- reactive({
+    as.formula(paste(input$selection_qb,
+                     "~ ValuePerYear +", 
+                     paste(input$selected_predictor, 
+                           collapse =" + ")))
+  })
+  
+  #Intialize linear model using the formula created above
+  
+  model_4 <- reactive({
+    stan_glm(data = QB,
+             formula = formula3(),
+             refresh = 0,
+             family = "gaussian")})
+  
+  #Print model as a GT regression table
+  
+  
+  output$model4 <- render_gt(
+    model_4() %>%
+      tbl_regression(intercept = TRUE) %>%
+      as_gt() %>%
+      
+      #Create table headers using the outcome table for QB and input
+      
+      tab_header(title = paste("Regression of", 
+                               names(outcome_table)
+                               [outcome_table == input$selection_qb]),
+                 subtitle = paste("Predicted changes in", 
+                                  names(outcome_table)
+                                  [outcome_table == input$selection_qb],
+                                  "as various predictors increase")))
+    
+  #Input formula with data as selected by user, using paste with the selected
+  #input to paste in regressors separated by plus signs
+    
+  formula4 <- reactive({
+    as.formula(paste(input$selection_rb,
+                     "~ ValuePerYear +", 
+                     paste(input$selected_predictor1, 
+                           collapse =" + ")))
+  })
+  
+  #Intialize linear model using the formula created above
+  
+  model_5 <- reactive({
+    stan_glm(data = RB,
+             formula = formula4(),
+             refresh = 0,
+             family = "gaussian")})
+  
+  #Print model as a GT regression table
+  
+  output$model5 <- render_gt(
+    model_5() %>%
+      tbl_regression(intercept = TRUE) %>%
+      as_gt() %>%
+      
+      #Create table headers using the outcome table for RB and input
+      
+      tab_header(title = paste("Regression of", 
+                               names(outcome_table1)
+                               [outcome_table1 == input$selection_rb]),
+                 subtitle = paste("Predicted changes in", 
+                                  names(outcome_table1)
+                                  [outcome_table1 == input$selection_rb],
+                                  "as various predictors increase")))
+  
+  #Input formula with data as selected by user, using paste with the selected
+  #input to paste in regressors separated by plus signs
+  
+  formula5 <- reactive({
+    as.formula(paste(input$selection_wr,
+                     "~ ValuePerYear +", 
+                     paste(input$selected_predictor2, 
+                           collapse =" + ")))
+  })
+  
+  
+  #Intialize linear model using the formula created above
+  
+  model_6 <- reactive({
+    stan_glm(data = WR,
+             formula = formula5(),
+             refresh = 0,
+             family = "gaussian")})
+  
+  #Print model as a GT regression table
+  
+  output$model6 <- render_gt(
+    model_6() %>%
+      tbl_regression(intercept = TRUE) %>%
+      as_gt() %>%
+      
+      #Create table headers using the outcome table for RB and input
+      
+      tab_header(title = paste("Regression of", 
+                               names(outcome_table2)
+                               [outcome_table2 == input$selection_wr]),
+                 subtitle = paste("Predicted changes in", 
+                                  names(outcome_table2)
+                                  [outcome_table2 == input$selection_wr],
+                                  "as various predictors increase")))
+  
+  
+  
+  #Render team table
+  
+  output$teammodel  <- render_gt({
+    team_graph1
+  })
+  
+    
+  
+
 }
-shinyApp(ui = ui, server = server)
+
+shinyApp(ui = ui,server = server)
